@@ -1,5 +1,12 @@
-# tensorflow-convlstm-cell
-A ConvLSTM cell for TensorFlow's RNN API.
+# TensorFlow ConvLSTM Cell
+A ConvLSTM cell for TensorFlow's RNN API. 
+
+# About TensorFlow's RNNs
+`tf.nn.dynamic_rnn` requires input to be 3D tensors `(sequence, time, feature)`, while a ConvLSTM takes 5D tensors `(sequence, time, width, height, channel)`. A way of getting around this is to flatten the input and expand the output with reshaping. 
+
+`tf.nn.dynamic_rnn` also requires the input/output shape to be unchanged over time, which becomes problematic for a ConvLSTM because the first iteration will increase the number of channels to the number of filters. In order to get around this, one could do an initial 3D convolution to match the number of filters before calling the RNN API.
+
+Therefore this implementation provides two utility functions, `convolve_inputs` and `expand_outputs`, to deal with this.
 
 # Usage
 ```py
