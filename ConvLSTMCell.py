@@ -1,0 +1,81 @@
+from tensorflow.python.ops.variable_scope import variable_scope, get_variable
+from tensorflow.python.ops.init_ops import constant_initializer
+from tensorflow.python.ops.math_ops import tanh, sigmoid
+from tensorflow.python.ops.rnn_cell import RNNCell, LSTMStateTuple
+from tensorflow.python.ops.nn_ops import conv2d, conv3d
+from tensorflow.python.ops.array_ops import concat, split, reshape, zeros
+
+
+class ConvLSTMCell(RNNCell):
+  """A LSTM cell with convolutions instead of multiplications.
+
+  Reference:
+    Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
+  """
+  def __init__(self, filters, height, width, channels, kernel=[3, 3], forget_bias=1.0, activation=tanh):
+    self._kernel = kernel
+    self._num_units = filters
+    self._height = height
+    self._width = width
+    self._channels = channels
+    self._forget_bias = forget_bias
+    self._activation = activation
+
+  @property
+  def state_size(self):
+    size = self._height * self._width * self._num_units
+    return LSTMStateTuple(size, size)
+
+  @property
+  def output_size(self):
+    return self._height * self._width * self._num_units
+    
+  def zero_state(self, batch_size, dtype):
+    shape = [batch_size, self._height * self._width * self._num_units]
+    memory = zeros(shape, dtype=dtype)
+    output = zeros(shape, dtype=dtype)
+    return LSTMStateTuple(memory, output)
+
+  def __call__(self, input, state, scope=None):
+    """Convolutional long short-term memory cell (ConvLSTM)."""
+    
+    with variable_scope(scope or 'ConvLSTMCell'):
+      previous_memory, previous_output = state
+ 
+      with variable_scope('Expand'):
+        batch_size = int(previous_memory.get_shape()[0])
+        shape =  [batch_size, self._height, self._width, self._num_units]
+        input = reshape(input, shape)
+        previous_memory = reshape(previous_memory, shape)
+        previous_output = reshape(previous_output, shape)
+
+      with variable_scope('Convolve'):
+        x = concat(3, [input, previous_output])
+        W = get_variable('Weights', self._kernel + [2 * self._num_units, 4 * self._num_units])
+        b = get_variable('Biases', [4 * self._num_units], initializer=constant_initializer(0.0))
+        y = conv2d(x, W, [1, 1, 1, 1], 'SAME') + b
+        input_gate, new_input, forget_gate, output_gate = split(3, 4, y)
+
+      with variable_scope('LSTM'):
+        memory = (previous_memory
+          * sigmoid(forget_gate + self._forget_bias)
+          + sigmoid(input_gate) * self._activation(new_input))
+        output = self._activation(memory) * sigmoid(output_gate)
+   
+      with variable_scope('Flatten'):
+        shape = [-1, self._height * self._width * self._num_units]
+        output = reshape(output, shape)
+        memory = reshape(memory, shape)
+
+      return output, LSTMStateTuple(memory, output)
+   
+
+def convolve_inputs(inputs, batch_size, height, width, channels, filters):
+  W = get_variable('Weights', [1, 1, 1] + [channels, filters])
+  b = get_variable('Biases', [filters], initializer=constant_initializer(0.0))
+  y = conv3d(inputs, W, [1] * 5, 'SAME') + b
+  return reshape(y, [batch_size, -1, height * width * filters])
+    
+
+def expand_outputs(outputs, batch_size, height, width, filters):
+  return reshape(outputs, [batch_size, -1, height, width, filters])
