@@ -1,0 +1,6 @@
+# Make sure to run the README.md usage example on commits.
+dist: trusty
+language: python
+cache: pip
+install: pip install tensorflow
+script: python -c 'exec(open("README.md").read().split("```")[1][3:])'
