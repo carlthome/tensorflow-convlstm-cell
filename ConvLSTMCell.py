@@ -36,9 +36,7 @@ class ConvLSTMCell(RNNCell):
     output = zeros(shape, dtype=dtype)
     return LSTMStateTuple(memory, output)
 
-  def __call__(self, input, state, scope=None):
-    """Convolutional long short-term memory cell (ConvLSTM)."""
-    
+  def __call__(self, input, state, scope=None):    
     with variable_scope(scope or 'ConvLSTMCell'):
       previous_memory, previous_output = state
  
@@ -53,7 +51,7 @@ class ConvLSTMCell(RNNCell):
         x = concat(3, [input, previous_output])
         W = get_variable('Weights', self._kernel + [2 * self._num_units, 4 * self._num_units])
         b = get_variable('Biases', [4 * self._num_units], initializer=constant_initializer(0.0))
-        y = conv2d(x, W, [1, 1, 1, 1], 'SAME') + b
+        y = conv2d(x, W, [1] * 4, 'SAME') + b
         input_gate, new_input, forget_gate, output_gate = split(3, 4, y)
 
       with variable_scope('LSTM'):
@@ -70,12 +68,24 @@ class ConvLSTMCell(RNNCell):
       return output, LSTMStateTuple(memory, output)
    
 
-def convolve_inputs(inputs, batch_size, height, width, channels, filters):
-  W = get_variable('Weights', [1, 1, 1] + [channels, filters])
-  b = get_variable('Biases', [filters], initializer=constant_initializer(0.0))
-  y = conv3d(inputs, W, [1] * 5, 'SAME') + b
-  return reshape(y, [batch_size, -1, height * width * filters])
+def convolve_inputs(inputs, filters, kernel=[1, 1, 1], scope=None):
+  s = inputs.get_shape()
+  samples = s[0].value
+  timesteps = s[1].value
+  height = s[2].value
+  width = s[3].value
+  channels = s[4].value
+  
+  with variable_scope('Conv3D'):
+    W = get_variable('Weights', kernel + [channels, filters])
+    b = get_variable('Biases', [filters], initializer=constant_initializer(0.0))
+    y = conv3d(inputs, W, [1] * 5, 'SAME') + b
+    return reshape(y, [samples, timesteps, height * width * filters])
     
 
-def expand_outputs(outputs, batch_size, height, width, filters):
-  return reshape(outputs, [batch_size, -1, height, width, filters])
+def expand_outputs(outputs, height, width):
+  s = outputs.get_shape()
+  samples = s[0].value
+  timesteps = s[1].value
+  
+  return reshape(outputs, [samples, timesteps, height, width, -1])
