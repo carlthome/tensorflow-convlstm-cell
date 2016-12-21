@@ -41,8 +41,7 @@ class ConvLSTMCell(RNNCell):
       previous_memory, previous_output = state
  
       with variable_scope('Expand'):
-        batch_size = int(previous_memory.get_shape()[0])
-        shape =  [batch_size, self._height, self._width, self._num_units]
+        shape =  [-1, self._height, self._width, self._num_units]
         input = reshape(input, shape)
         previous_memory = reshape(previous_memory, shape)
         previous_output = reshape(previous_output, shape)
