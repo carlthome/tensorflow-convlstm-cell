@@ -2,7 +2,7 @@ from tensorflow.python.ops.variable_scope import variable_scope, get_variable
 from tensorflow.python.ops.init_ops import constant_initializer
 from tensorflow.python.ops.math_ops import tanh, sigmoid
 from tensorflow.python.ops.rnn_cell import RNNCell, LSTMStateTuple
-from tensorflow.python.ops.nn_ops import conv2d, conv3d
+from tensorflow.python.ops.nn_ops import conv2d, conv3d, bias_add
 from tensorflow.python.ops.array_ops import concat, split, reshape, zeros
 
 
@@ -50,7 +50,7 @@ class ConvLSTMCell(RNNCell):
         x = concat(3, [input, previous_output])
         W = get_variable('Weights', self._kernel + [2 * self._num_units, 4 * self._num_units])
         b = get_variable('Biases', [4 * self._num_units], initializer=constant_initializer(0.0))
-        y = conv2d(x, W, [1] * 4, 'SAME') + b
+        y = bias_add(conv2d(x, W, [1] * 4, 'SAME'), b)
         input_gate, new_input, forget_gate, output_gate = split(3, 4, y)
 
       with variable_scope('LSTM'):
@@ -78,7 +78,7 @@ def convolve_inputs(inputs, filters, kernel=[1, 1, 1], scope=None):
   with variable_scope('Conv3D'):
     W = get_variable('Weights', kernel + [channels, filters])
     b = get_variable('Biases', [filters], initializer=constant_initializer(0.0))
-    y = conv3d(inputs, W, [1] * 5, 'SAME') + b
+    y = bias_add(conv3d(inputs, W, [1] * 5, 'SAME'), b)
     return reshape(y, [samples, timesteps, height * width * filters])
     
 
