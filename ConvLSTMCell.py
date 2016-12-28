@@ -1,5 +1,5 @@
 from tensorflow.python.ops.variable_scope import variable_scope, get_variable
-from tensorflow.python.ops.init_ops import constant_initializer
+from tensorflow.python.ops.init_ops import constant_initializer, orthogonal_initializer
 from tensorflow.python.ops.math_ops import tanh, sigmoid
 from tensorflow.python.ops.rnn_cell import RNNCell, LSTMStateTuple
 from tensorflow.python.ops.nn_ops import conv2d, conv3d, bias_add
@@ -12,7 +12,7 @@ class ConvLSTMCell(RNNCell):
   Reference:
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
-  def __init__(self, filters, height, width, channels, kernel=[3, 3], forget_bias=1.0, activation=tanh):
+  def __init__(self, filters, height, width, channels, kernel=[3, 3], forget_bias=1.0, activation=tanh, weights_initializer=orthogonal_initializer()):
     self._kernel = kernel
     self._num_units = filters
     self._height = height
@@ -20,6 +20,7 @@ class ConvLSTMCell(RNNCell):
     self._channels = channels
     self._forget_bias = forget_bias
     self._activation = activation
+    self._weights_initializer = weights_initializer
 
   @property
   def state_size(self):
@@ -48,7 +49,7 @@ class ConvLSTMCell(RNNCell):
 
       with variable_scope('Convolve'):
         x = concat(3, [input, previous_output])
-        W = get_variable('Weights', self._kernel + [2 * self._num_units, 4 * self._num_units])
+        W = get_variable('Weights', self._kernel + [2 * self._num_units, 4 * self._num_units], initializer=self._weights_initializer)
         b = get_variable('Biases', [4 * self._num_units], initializer=constant_initializer(0.0))
         y = bias_add(conv2d(x, W, [1] * 4, 'SAME'), b)
         input_gate, new_input, forget_gate, output_gate = split(3, 4, y)
@@ -67,7 +68,7 @@ class ConvLSTMCell(RNNCell):
       return output, LSTMStateTuple(memory, output)
    
 
-def convolve_inputs(inputs, filters, kernel=[1, 1, 1], scope=None):
+def convolve_inputs(inputs, filters, kernel=[1, 1, 1], weights_initializer=orthogonal_initializer(), scope=None):
   s = inputs.get_shape()
   samples = s[0].value
   timesteps = s[1].value
@@ -76,7 +77,7 @@ def convolve_inputs(inputs, filters, kernel=[1, 1, 1], scope=None):
   channels = s[4].value
   
   with variable_scope('Conv3D'):
-    W = get_variable('Weights', kernel + [channels, filters])
+    W = get_variable('Weights', kernel + [channels, filters], initializer=weights_initializer)
     b = get_variable('Biases', [filters], initializer=constant_initializer(0.0))
     y = bias_add(conv3d(inputs, W, [1] * 5, 'SAME'), b)
     return reshape(y, [samples, timesteps, height * width * filters])
