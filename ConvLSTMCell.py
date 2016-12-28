@@ -1,5 +1,5 @@
 from tensorflow.python.ops.array_ops import concat, reshape, split, zeros
-from tensorflow.python.ops.init_ops import constant_initializer, orthogonal_initializer
+from tensorflow.python.ops.init_ops import zeros_initializer, orthogonal_initializer
 from tensorflow.python.ops.math_ops import sigmoid, tanh
 from tensorflow.python.ops.nn_ops import bias_add, conv2d, conv3d
 from tensorflow.python.ops.rnn_cell import LSTMStateTuple, RNNCell
@@ -13,45 +13,38 @@ class ConvLSTMCell(RNNCell):
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
 
-  def __init__(self, filters, height, width, channels, kernel=[3, 3], forget_bias=1.0, activation=tanh, weights_initializer=orthogonal_initializer()):
-    self._kernel = kernel
-    self._num_units = filters
+  def __init__(self, height, width, filters, kernel=[3, 3], forget_bias=1.0, activation=tanh, weights_initializer=orthogonal_initializer()):
     self._height = height
     self._width = width
-    self._channels = channels
+    self._filters = filters
+    self._kernel = kernel
     self._forget_bias = forget_bias
     self._activation = activation
     self._weights_initializer = weights_initializer
 
   @property
   def state_size(self):
-    size = self._height * self._width * self._num_units
+    size = self._height * self._width * self._filters
     return LSTMStateTuple(size, size)
 
   @property
   def output_size(self):
-    return self._height * self._width * self._num_units
-
-  def zero_state(self, batch_size, dtype):
-    shape = [batch_size, self._height * self._width * self._num_units]
-    memory = zeros(shape, dtype=dtype)
-    output = zeros(shape, dtype=dtype)
-    return LSTMStateTuple(memory, output)
+    return self._height * self._width * self._filters
 
   def __call__(self, input, state, scope=None):
     with variable_scope(scope or 'ConvLSTMCell'):
       previous_memory, previous_output = state
 
       with variable_scope('Expand'):
-        shape = [-1, self._height, self._width, self._num_units]
+        shape = [-1, self._height, self._width, self._filters]
         input = reshape(input, shape)
         previous_memory = reshape(previous_memory, shape)
         previous_output = reshape(previous_output, shape)
 
       with variable_scope('Convolve'):
         x = concat(3, [input, previous_output])
-        W = get_variable('Weights', self._kernel + [2 * self._num_units, 4 * self._num_units], initializer=self._weights_initializer)
-        b = get_variable('Biases', [4 * self._num_units], initializer=constant_initializer(0.0))
+        W = get_variable('Weights', self._kernel + [2 * self._filters, 4 * self._filters], initializer=self._weights_initializer)
+        b = get_variable('Biases', [4 * self._filters], initializer=zeros_initializer)
         y = bias_add(conv2d(x, W, [1] * 4, 'SAME'), b)
         input_gate, new_input, forget_gate, output_gate = split(3, 4, y)
 
@@ -62,31 +55,27 @@ class ConvLSTMCell(RNNCell):
         output = self._activation(memory) * sigmoid(output_gate)
 
       with variable_scope('Flatten'):
-        shape = [-1, self._height * self._width * self._num_units]
+        shape = [-1, self._height * self._width * self._filters]
         output = reshape(output, shape)
         memory = reshape(memory, shape)
 
       return output, LSTMStateTuple(memory, output)
 
 
-def convolve_inputs(inputs, filters, kernel=[1, 1, 1], weights_initializer=orthogonal_initializer(), scope=None):
-  samples, timesteps, height, width, channels = inputs.get_shape().as_list()
+def conv_3d(tensor, filters, kernel=[1, 1, 1], weights_initializer=orthogonal_initializer(), scope=None):
+  samples, timesteps, height, width, channels = tensor.get_shape().as_list()
   with variable_scope(scope or 'Conv3D'):
-    W = get_variable(
-        'Weights',
-        kernel + [channels, filters],
-        initializer=weights_initializer)
-    b = get_variable(
-        'Biases', [filters], initializer=constant_initializer(0.0))
-    y = bias_add(conv3d(inputs, W, [1] * 5, 'SAME'), b)
+    W = get_variable('Weights', kernel + [channels, filters], initializer=weights_initializer)
+    b = get_variable('Biases', [filters], initializer=zeros_initializer)
+    y = bias_add(conv3d(tensor, W, [1] * 5, 'SAME'), b)
     return y
 
 
-def flatten_inputs(inputs):
-  samples, timesteps, height, width, filters = inputs.get_shape().as_list()
-  return reshape(inputs, [samples, timesteps, height * width * filters])
+def flatten(tensor):
+  samples, timesteps, height, width, filters = tensor.get_shape().as_list()
+  return reshape(tensor, [samples, timesteps, height * width * filters])
 
 
-def expand_outputs(outputs, height, width):
-  samples, timesteps, features = outputs.get_shape().as_list()
-  return reshape(outputs, [samples, timesteps, height, width, -1])
+def expand(tensor, height, width):
+  samples, timesteps, features = tensor.get_shape().as_list()
+  return reshape(tensor, [samples, timesteps, height, width, -1])
