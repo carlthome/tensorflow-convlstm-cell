@@ -20,10 +20,9 @@ width = 16
 height = 16
 channels = 3
 filters = 12
-dtype = tf.float32
 
 # Create a placeholder for videos.
-inputs = tf.placeholder(dtype, [batch_size, timesteps, width, height, channels])
+inputs = tf.placeholder(tf.float32, [batch_size, timesteps, width, height, channels])
 
 # 3D convolve videos to match the number of filters in the ConvLSTM.
 inputs = convolve_inputs(inputs, filters)
@@ -35,7 +34,7 @@ inputs = flatten_inputs(inputs)
 cell = ConvLSTMCell(filters, height, width, channels)
 cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 3)
 cell = tf.nn.rnn_cell.DropoutWrapper(cell, 0.5, 0.5)
-state = cell.zero_state(batch_size, dtype)
+state = cell.zero_state(batch_size, inputs.dtype)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, initial_state=state)
 
 # Reshape outputs to videos again, because tf.nn.dynamic_rnn only accepts 3D input.
