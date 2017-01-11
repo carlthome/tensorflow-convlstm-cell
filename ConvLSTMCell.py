@@ -1,7 +1,8 @@
-from tensorflow.python.ops.array_ops import concat, reshape, split, zeros
-from tensorflow.python.ops.init_ops import zeros_initializer, orthogonal_initializer
+import tensorflow as tf
+from tensorflow.python.ops.array_ops import concat, reshape, split
+from tensorflow.python.ops.init_ops import zeros_initializer, constant_initializer
 from tensorflow.python.ops.math_ops import sigmoid, tanh
-from tensorflow.python.ops.nn_ops import bias_add, conv2d, conv3d
+from tensorflow.python.ops.nn_ops import convolution
 from tensorflow.python.ops.rnn_cell import LSTMStateTuple, RNNCell
 from tensorflow.python.ops.variable_scope import get_variable, variable_scope
 
@@ -9,18 +10,20 @@ from tensorflow.python.ops.variable_scope import get_variable, variable_scope
 class ConvLSTMCell(RNNCell):
   """A LSTM cell with convolutions instead of multiplications.
 
-  Reference: 
+  Reference:
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
 
-  def __init__(self, height, width, filters, kernel=[3, 3], forget_bias=1.0, activation=tanh, weights_initializer=orthogonal_initializer()):
+  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), kernel=[3, 3], normalize=True, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
     self._height = height
     self._width = width
     self._filters = filters
     self._kernel = kernel
+    self._normalize = normalize
+    self._is_training = is_training
+    self._initializer = initializer
     self._forget_bias = forget_bias
     self._activation = activation
-    self._weights_initializer = weights_initializer
 
   @property
   def state_size(self):
@@ -36,22 +39,53 @@ class ConvLSTMCell(RNNCell):
       previous_memory, previous_output = state
 
       with variable_scope('Expand'):
-        shape = [-1, self._height, self._width, self._filters]
-        input = reshape(input, shape)
-        previous_memory = reshape(previous_memory, shape)
-        previous_output = reshape(previous_output, shape)
+        samples = input.get_shape()[0].value
+        shape = [samples, self._height, self._width]
+        input = reshape(input, shape + [-1])
+        previous_memory = reshape(previous_memory, shape + [self._filters])
+        previous_output = reshape(previous_output, shape + [self._filters])
 
       with variable_scope('Convolve'):
-        x = concat(3, [input, previous_output])
-        W = get_variable('Weights', self._kernel + [2 * self._filters, 4 * self._filters], initializer=self._weights_initializer)
-        b = get_variable('Biases', [4 * self._filters], initializer=zeros_initializer)
-        y = bias_add(conv2d(x, W, [1] * 4, 'SAME'), b)
-        input_gate, new_input, forget_gate, output_gate = split(3, 4, y)
+        channels = input.get_shape()[-1].value
+        filters = self._filters
+        gates = 4 * filters if filters > 1 else 4
+
+        # The input-to-hidden and hidden-to-hidden weights can be summed directly if batch normalization is not needed.
+        if not self._normalize:
+          x = concat(3, [input, previous_output])  # TODO Update to TensorFlow 1.0.
+          n = channels + filters
+          m = gates
+          W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
+          y = convolution(x, W, 'SAME')
+        else:
+          with variable_scope('Input'):
+            x = input
+            n = channels
+            m = gates
+            W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
+            Wxh = convolution(x, W, 'SAME')
+
+          with variable_scope('Hidden'):
+            x = previous_output
+            n = filters
+            m = gates
+            W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
+            Whh = convolution(x, W, 'SAME')
+
+          Wxh = _batch_norm(Wxh, self._is_training)
+          Whh = _batch_norm(Whh, self._is_training)
+          y = Wxh + Whh
+
+        y += get_variable('Biases', [m], initializer=zeros_initializer)
+
+        input, input_gate, forget_gate, output_gate = split(3, 4, y)  # TODO Update to TensorFlow 1.0.
 
       with variable_scope('LSTM'):
-        memory = (previous_memory 
-          * sigmoid(forget_gate + self._forget_bias) 
-          + sigmoid(input_gate) * self._activation(new_input))
+        memory = (previous_memory
+          * sigmoid(forget_gate + self._forget_bias)
+          + sigmoid(input_gate) * self._activation(input))
+        if self._normalize:
+          memory = _batch_norm(memory, self._is_training)
         output = self._activation(memory) * sigmoid(output_gate)
 
       with variable_scope('Flatten'):
@@ -62,15 +96,6 @@ class ConvLSTMCell(RNNCell):
       return output, LSTMStateTuple(memory, output)
 
 
-def conv_3d(tensor, filters, kernel=[1, 1, 1], weights_initializer=orthogonal_initializer(), scope=None):
-  samples, timesteps, height, width, channels = tensor.get_shape().as_list()
-  with variable_scope(scope or 'Conv3D'):
-    W = get_variable('Weights', kernel + [channels, filters], initializer=weights_initializer)
-    b = get_variable('Biases', [filters], initializer=zeros_initializer)
-    y = bias_add(conv3d(tensor, W, [1] * 5, 'SAME'), b)
-    return y
-
-
 def flatten(tensor):
   samples, timesteps, height, width, filters = tensor.get_shape().as_list()
   return reshape(tensor, [samples, timesteps, height * width * filters])
@@ -79,3 +104,16 @@ def flatten(tensor):
 def expand(tensor, height, width):
   samples, timesteps, features = tensor.get_shape().as_list()
   return reshape(tensor, [samples, timesteps, height, width, -1])
+
+
+def _batch_norm(tensor, is_training):
+    """Batch normalization for an individual RNN time step.
+
+    Initial gammas should be around 0.1 according to Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
+    """
+    from tensorflow.contrib.layers import batch_norm
+    return batch_norm(tensor,
+                      scale=True,
+                      is_training=is_training,
+                      updates_collections=None,
+                      param_initializers={'gamma': constant_initializer(0.1)})
