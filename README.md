@@ -27,7 +27,7 @@ inputs = tf.placeholder(tf.float32, [batch_size, timesteps, width, height, chann
 inputs = flatten(inputs)
 
 # Add the ConvLSTM step.
-cell = ConvLSTMCell(height, width, filters, is_training)
+cell = ConvLSTMCell(height, width, filters, is_training, normalize_timesteps=100)
 cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=tf.cond(is_training, lambda: tf.constant(0.9), lambda: tf.constant(1.0)))
 cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 3)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)

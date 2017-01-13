@@ -14,16 +14,18 @@ class ConvLSTMCell(RNNCell):
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
 
-  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), kernel=[3, 3], normalize=True, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
+  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), kernel=[3, 3], normalize_timesteps=10, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
     self._height = height
     self._width = width
     self._filters = filters
     self._kernel = kernel
-    self._normalize = normalize
     self._is_training = is_training
     self._initializer = initializer
     self._forget_bias = forget_bias
     self._activation = activation
+    self._normalize_timesteps = normalize_timesteps
+    self._normalize = normalize_timesteps > 0
+    self._timestep = 0
 
   @property
   def state_size(self):
@@ -35,6 +37,9 @@ class ConvLSTMCell(RNNCell):
     return self._height * self._width * self._filters
 
   def __call__(self, input, state, scope=None):
+    if self._timestep < self._normalize_timesteps:
+      self._timestep += 1
+
     with variable_scope(scope or 'ConvLSTMCell'):
       previous_memory, previous_output = state
 
@@ -64,6 +69,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Wxh = convolution(x, W, 'SAME')
+            Wxh = _batch_norm(Wxh, self._is_training, self._timestep)
 
           with variable_scope('Hidden'):
             x = previous_output
@@ -71,9 +77,8 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Whh = convolution(x, W, 'SAME')
+            Whh = _batch_norm(Whh, self._is_training, self._timestep)
 
-          Wxh = _batch_norm(Wxh, self._is_training)
-          Whh = _batch_norm(Whh, self._is_training)
           y = Wxh + Whh
 
         y += get_variable('Biases', [m], initializer=zeros_initializer)
@@ -85,7 +90,7 @@ class ConvLSTMCell(RNNCell):
           * sigmoid(forget_gate + self._forget_bias)
           + sigmoid(input_gate) * self._activation(input))
         if self._normalize:
-          memory = _batch_norm(memory, self._is_training)
+          memory = _batch_norm(memory, self._is_training, self._timestep)
         output = self._activation(memory) * sigmoid(output_gate)
 
       with variable_scope('Flatten'):
@@ -106,7 +111,7 @@ def expand(tensor, height, width):
   return reshape(tensor, [samples, timesteps, height, width, -1])
 
 
-def _batch_norm(tensor, is_training):
+def _batch_norm(tensor, is_training, timestep):
     """Batch normalization for an individual RNN time step.
 
     Initial gammas should be around 0.1 according to Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
@@ -116,4 +121,5 @@ def _batch_norm(tensor, is_training):
                       scale=True,
                       is_training=is_training,
                       updates_collections=None,
-                      param_initializers={'gamma': constant_initializer(0.1)})
+                      param_initializers={'gamma': constant_initializer(0.1)},
+                      scope='BatchNorm_{}'.format(timestep))
