@@ -25,7 +25,6 @@ class ConvLSTMCell(RNNCell):
     self._activation = activation
     self._normalize_timesteps = normalize_timesteps
     self._normalize = normalize_timesteps > 0
-    self._timestep = 0
 
   @property
   def state_size(self):
@@ -37,10 +36,7 @@ class ConvLSTMCell(RNNCell):
     return self._height * self._width * self._filters
 
   def __call__(self, input, state, scope=None):
-    if self._timestep < self._normalize_timesteps:
-      self._timestep += 1
-
-    with variable_scope(scope or 'ConvLSTMCell'):
+    with variable_scope(scope or self.__class__.__name__):
       previous_memory, previous_output = state
 
       with variable_scope('Expand'):
@@ -69,7 +65,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Wxh = convolution(x, W, 'SAME')
-            Wxh = _batch_norm(Wxh, self._is_training, self._timestep)
+            Wxh = self._batch_norm(Wxh)
 
           with variable_scope('Hidden'):
             x = previous_output
@@ -77,7 +73,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Whh = convolution(x, W, 'SAME')
-            Whh = _batch_norm(Whh, self._is_training, self._timestep)
+            Whh = self._batch_norm(Whh)
 
           y = Wxh + Whh
 
@@ -90,7 +86,7 @@ class ConvLSTMCell(RNNCell):
           * sigmoid(forget_gate + self._forget_bias)
           + sigmoid(input_gate) * self._activation(input))
         if self._normalize:
-          memory = _batch_norm(memory, self._is_training, self._timestep)
+          memory = self._batch_norm(memory)
         output = self._activation(memory) * sigmoid(output_gate)
 
       with variable_scope('Flatten'):
@@ -99,6 +95,34 @@ class ConvLSTMCell(RNNCell):
         memory = reshape(memory, shape)
 
       return output, LSTMStateTuple(memory, output)
+
+  def _batch_norm(self, tensor):
+      """Batch normalization for individual RNN timesteps.
+
+      Initial gammas should be around 0.1 according to Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
+      """
+      from tensorflow.contrib.layers import batch_norm
+      step = tf.train.get_global_step()
+      timestep = tf.cond(self._is_training,
+                         lambda: tf.mod(step, self._normalize_timesteps),
+                         lambda: step)
+      batch_norms = [lambda: batch_norm(tensor,
+                     scale=True,
+                     is_training=self._is_training,
+                     updates_collections=None,
+                     param_initializers={'gamma': constant_initializer(0.1)})
+                     for _ in range(self._normalize_timesteps)]
+      predicates = [tf.equal(timestep, x)
+                    for x in range(self._normalize_timesteps)]
+      x = batch_norms[-1]()
+      for i in range(self._normalize_timesteps):
+        x = tf.cond(predicates[i], lambda: batch_norms[i](), lambda: x)
+      return x
+      """TODO Use tf.case instead when fixed: http://stackoverflow.com/questions/40910834/how-to-duplicate-input-tensors-conditional-on-a-tensor-attribute-oversampling
+      return tf.case(list(zip(predicates, batch_norms)),
+                     default=batch_norms[-1],
+                     exclusive=True)
+      """
 
 
 def flatten(tensor):
@@ -109,17 +133,3 @@ def flatten(tensor):
 def expand(tensor, height, width):
   samples, timesteps, features = tensor.get_shape().as_list()
   return reshape(tensor, [samples, timesteps, height, width, -1])
-
-
-def _batch_norm(tensor, is_training, timestep):
-    """Batch normalization for an individual RNN time step.
-
-    Initial gammas should be around 0.1 according to Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
-    """
-    from tensorflow.contrib.layers import batch_norm
-    return batch_norm(tensor,
-                      scale=True,
-                      is_training=is_training,
-                      updates_collections=None,
-                      param_initializers={'gamma': constant_initializer(0.1)},
-                      scope='BatchNorm_{}'.format(timestep))
