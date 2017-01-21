@@ -14,7 +14,7 @@ class ConvLSTMCell(RNNCell):
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
 
-  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), kernel=[3, 3], normalize_timesteps=10, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
+  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), timestep=tf.placeholder(tf.int32), kernel=[3, 3], normalize_timesteps=10, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
     self._height = height
     self._width = width
     self._filters = filters
@@ -23,6 +23,7 @@ class ConvLSTMCell(RNNCell):
     self._initializer = initializer
     self._forget_bias = forget_bias
     self._activation = activation
+    self._timestep = timestep
     self._normalize_timesteps = normalize_timesteps
     self._normalize = normalize_timesteps > 0
 
@@ -65,7 +66,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Wxh = convolution(x, W, 'SAME')
-            Wxh = self._batch_norm(Wxh)
+            Wxh = self._recurrent_batch_normalization(Wxh)
 
           with variable_scope('Hidden'):
             x = previous_output
@@ -73,7 +74,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Whh = convolution(x, W, 'SAME')
-            Whh = self._batch_norm(Whh)
+            Whh = self._recurrent_batch_normalization(Whh)
 
           y = Wxh + Whh
 
@@ -86,7 +87,7 @@ class ConvLSTMCell(RNNCell):
           * sigmoid(forget_gate + self._forget_bias)
           + sigmoid(input_gate) * self._activation(input))
         if self._normalize:
-          memory = self._batch_norm(memory)
+          memory = self._recurrent_batch_normalization(memory)
         output = self._activation(memory) * sigmoid(output_gate)
 
       with variable_scope('Flatten'):
@@ -96,27 +97,48 @@ class ConvLSTMCell(RNNCell):
 
       return output, LSTMStateTuple(memory, output)
 
-  def _batch_norm(self, tensor):
-      """Batch normalization for individual RNN timesteps.
+  def _recurrent_batch_normalization(self, tensor, epsilon=1e-3, decay=0.999):
+      """Batch normalization for RNNs. Multiple population estimates are
+      maintained to let the LSTM cell settle when starting a sequence.
 
-      Initial gammas should be around 0.1 according to Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
+      Notes:
+        - Initial gammas should be around 0.1 to avoid vanishing gradients.
+        - Beta is fixed to 0.0 so the LSTM's biases learn instead.
+        - Statistics are calculated over time, but gamma is still shared.
+
+      Reference:
+        Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
       """
-      from tensorflow.contrib.layers import batch_norm
-      step = tf.train.get_global_step()
-      timestep = tf.cond(self._is_training,
-                         lambda: tf.mod(step, self._normalize_timesteps),
-                         lambda: step)
-      batch_norms = [lambda: batch_norm(tensor,
-                     scale=True,
-                     is_training=self._is_training,
-                     updates_collections=None,
-                     param_initializers={'gamma': constant_initializer(0.1)})
-                     for _ in range(self._normalize_timesteps)]
-      predicates = [tf.equal(timestep, x)
-                    for x in range(self._normalize_timesteps)]
-      x = batch_norms[-1]()
+      # Normalize every channel/filter independently.
+      filters = tensor.get_shape()[-1].value
+      gamma = tf.get_variable('Scale', [filters], initializer=tf.constant_initializer(0.1))
+      beta = tf.zeros([filters], name='Offset')
+      batch_mean, batch_var = tf.nn.moments(tensor, [0, 1, 2])
+
+      # TODO Vectorize.
+      batch_norms = []
       for i in range(self._normalize_timesteps):
-        x = tf.cond(predicates[i], lambda: batch_norms[i](), lambda: x)
+        # TODO Use builtin moving averages instead.
+        pop_mean = tf.get_variable('PopulationMean{}'.format(i), [filters], initializer=tf.constant_initializer(0.0), trainable=False)
+        pop_var = tf.get_variable('PopulationVariance{}'.format(i), [filters], initializer=tf.constant_initializer(1.0), trainable=False)
+        train_mean = tf.assign(pop_mean, pop_mean * decay + batch_mean * (1 - decay))
+        train_var = tf.assign(pop_var, pop_var * decay + batch_var * (1 - decay))
+
+        def training():
+            with tf.control_dependencies([train_mean, train_var]):
+                return tf.nn.batch_normalization(tensor, batch_mean, batch_var, beta, gamma, epsilon)
+
+        def testing():
+            return tf.nn.batch_normalization(tensor, pop_mean, pop_var, beta, gamma, epsilon)
+
+        batch_norms.append(tf.cond(self._is_training, training, testing))
+
+      # Choose which population estimate to use.
+      idx = tf.clip_by_value(self._timestep, 0, self._normalize_timesteps)
+      predicates = [tf.equal(idx, i) for i in range(self._normalize_timesteps)]
+      x = batch_norms[-1]
+      for i in range(self._normalize_timesteps):
+        x = tf.cond(predicates[i], lambda: batch_norms[i], lambda: x)
       return x
       """TODO Use tf.case instead when fixed: http://stackoverflow.com/questions/40910834/how-to-duplicate-input-tensors-conditional-on-a-tensor-attribute-oversampling
       return tf.case(list(zip(predicates, batch_norms)),
