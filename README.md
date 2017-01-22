@@ -18,9 +18,8 @@ channels = 3
 filters = 12
 
 # Used for dropout and batch normalization.
-global_step = tf.Variable(0, trainable=False, name='global_step')
-timestep = tf.mod(global_step, timesteps)
 is_training = tf.placeholder(tf.bool)
+new_sequences = tf.placeholder(tf.bool)
 
 # Create a placeholder for videos.
 inputs = tf.placeholder(tf.float32, [batch_size, timesteps, width, height, channels])
@@ -29,7 +28,7 @@ inputs = tf.placeholder(tf.float32, [batch_size, timesteps, width, height, chann
 inputs = flatten(inputs)
 
 # Add the ConvLSTM step.
-cell = ConvLSTMCell(height, width, filters, is_training, timestep)
+cell = ConvLSTMCell(height, width, filters, is_training, new_sequences)
 cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=tf.cond(is_training, lambda: tf.constant(0.9), lambda: tf.constant(1.0)))
 cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 3)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)

@@ -14,7 +14,7 @@ class ConvLSTMCell(RNNCell):
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
 
-  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), timestep=tf.placeholder(tf.int32), kernel=[3, 3], normalize_timesteps=10, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
+  def __init__(self, height, width, filters, is_training=tf.placeholder(tf.bool), new_sequences=tf.placeholder(tf.bool), kernel=[3, 3], normalize_timesteps=10, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
     self._height = height
     self._width = width
     self._filters = filters
@@ -23,7 +23,7 @@ class ConvLSTMCell(RNNCell):
     self._initializer = initializer
     self._forget_bias = forget_bias
     self._activation = activation
-    self._timestep = timestep
+    self._new_sequences = new_sequences
     self._normalize_timesteps = normalize_timesteps
     self._normalize = normalize_timesteps > 0
 
@@ -39,6 +39,14 @@ class ConvLSTMCell(RNNCell):
   def __call__(self, input, state, scope=None):
     with variable_scope(scope or self.__class__.__name__):
       previous_memory, previous_output = state
+
+      with variable_scope('Counter'):
+        timestep = tf.Variable(0.0, trainable=False)
+        increment_op = tf.cond(self._new_sequences,
+                               lambda: tf.assign(timestep, 0),
+                               lambda: tf.add(timestep, 1))
+        with tf.control_dependencies([increment_op]):
+          input = input  # TODO This assignment looks silly.
 
       with variable_scope('Expand'):
         samples = input.get_shape()[0].value
@@ -66,7 +74,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Wxh = convolution(x, W, 'SAME')
-            Wxh = self._recurrent_batch_normalization(Wxh)
+            Wxh = self._recurrent_batch_normalization(Wxh, timestep)
 
           with variable_scope('Hidden'):
             x = previous_output
@@ -74,7 +82,7 @@ class ConvLSTMCell(RNNCell):
             m = gates
             W = get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
             Whh = convolution(x, W, 'SAME')
-            Whh = self._recurrent_batch_normalization(Whh)
+            Whh = self._recurrent_batch_normalization(Whh, timestep)
 
           y = Wxh + Whh
 
@@ -87,7 +95,7 @@ class ConvLSTMCell(RNNCell):
           * sigmoid(forget_gate + self._forget_bias)
           + sigmoid(input_gate) * self._activation(input))
         if self._normalize:
-          memory = self._recurrent_batch_normalization(memory)
+          memory = self._recurrent_batch_normalization(memory, timestep)
         output = self._activation(memory) * sigmoid(output_gate)
 
       with variable_scope('Flatten'):
@@ -97,7 +105,7 @@ class ConvLSTMCell(RNNCell):
 
       return output, LSTMStateTuple(memory, output)
 
-  def _recurrent_batch_normalization(self, tensor, epsilon=1e-3, decay=0.999):
+  def _recurrent_batch_normalization(self, tensor, timestep, epsilon=1e-3, decay=0.999):
       """Batch normalization for RNNs. Multiple population estimates are
       maintained to let the LSTM cell settle when starting a sequence.
 
@@ -134,7 +142,7 @@ class ConvLSTMCell(RNNCell):
         batch_norms.append(tf.cond(self._is_training, training, testing))
 
       # Choose which population estimate to use.
-      idx = tf.clip_by_value(self._timestep, 0, self._normalize_timesteps)
+      idx = tf.clip_by_value(timestep, 0, self._normalize_timesteps)
       predicates = [tf.equal(idx, i) for i in range(self._normalize_timesteps)]
       x = batch_norms[-1]
       for i in range(self._normalize_timesteps):
