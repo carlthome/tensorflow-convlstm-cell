@@ -62,6 +62,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
           W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
           y = tf.nn.convolution(x, W, 'SAME')
         else:
+
           with tf.variable_scope('Input'):
             x = input
             n = channels
@@ -89,7 +90,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
           * tf.sigmoid(forget_gate + self._forget_bias)
           + tf.sigmoid(input_gate) * self._activation(input))
         if self._normalize:
-          memory = self._recurrent_batch_normalization(memory, timestep)
+          memory = self._recurrent_batch_normalization(memory, timestep, offset=True)
         output = self._activation(memory) * tf.sigmoid(output_gate)
 
       with tf.variable_scope('Flatten'):
@@ -99,23 +100,23 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 
       return output, tf.nn.rnn_cell.LSTMStateTuple(memory, output)
 
-  def _recurrent_batch_normalization(self, tensor, timestep, epsilon=1e-3, decay=0.999):
+  def _recurrent_batch_normalization(self, tensor, timestep, epsilon=1e-3, decay=0.999, offset=False):
       """Batch normalization for RNNs. Multiple population estimates are
       maintained to let the LSTM cell settle when starting a sequence.
 
       Notes:
         - Initial gammas should be around 0.1 to avoid vanishing gradients.
-        - Beta is fixed to 0.0 so the LSTM's biases learn instead.
         - Statistics are calculated over time, but gamma is still shared.
 
       Reference:
         Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
       """
       with tf.variable_scope('Normalize'):
+
         # Normalize every channel/filter independently.
         filters = tensor.get_shape()[-1].value
         gamma = tf.get_variable('Scale', [filters], initializer=tf.constant_initializer(0.1))
-        beta = tf.zeros([filters], name='Offset')
+        beta = tf.get_variable('Offset', [filters], initializer=tf.constant_initializer(0.0)) if offset else None
         batch_mean, batch_var = tf.nn.moments(tensor, [0, 1, 2])
 
         # TODO Vectorize.
