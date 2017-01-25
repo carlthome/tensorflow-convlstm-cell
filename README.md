@@ -5,7 +5,7 @@ A ConvLSTM cell for TensorFlow's RNN API.
 `tf.nn.dynamic_rnn` requires input to be 3D tensors `(sequence, time, feature)`, while a ConvLSTM takes 5D tensors `(sequence, time, width, height, channel)`. A way of getting around this is to flatten the input and expand the output with reshaping. Therefore this implementation provides two utility functions (`flatten` and `expand`) to deal with this.
 
 # Usage
-```py
+```python
 import tensorflow as tf
 
 from ConvLSTMCell import ConvLSTMCell, flatten, expand
