@@ -106,7 +106,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 
       Notes:
         - Initial gammas should be around 0.1 to avoid vanishing gradients.
-        - Statistics are calculated over time, but gamma is still shared.
+        - Statistics are calculated over time, but parameters are still shared.
 
       Reference:
         Cooijmans, Tim, et al. "Recurrent Batch Normalization." arXiv preprint arXiv:1603.09025 (2016).
@@ -122,7 +122,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
         # TODO Vectorize.
         batch_norms = []
         for i in range(self._statistics_timesteps):
-          # TODO Use builtin moving averages instead.
+          # TODO Use tf.moving_average_variables instead.
           pop_mean = tf.get_variable('PopulationMean{}'.format(i), [filters], initializer=tf.constant_initializer(0.0), trainable=False)
           pop_var = tf.get_variable('PopulationVariance{}'.format(i), [filters], initializer=tf.constant_initializer(1.0), trainable=False)
           train_mean = tf.assign(pop_mean, pop_mean * decay + batch_mean * (1 - decay))
@@ -144,7 +144,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
         for i in range(self._statistics_timesteps):
           x = tf.cond(predicates[i], lambda: batch_norms[i], lambda: x)
         return x
-        """TODO Use tf.case instead when fixed: http://stackoverflow.com/questions/40910834/how-to-duplicate-input-tensors-conditional-on-a-tensor-attribute-oversampling
+        """TODO Use tf.case instead when fixed: https://github.com/tensorflow/tensorflow/issues/3334
         return tf.case(list(zip(predicates, batch_norms)),
                        default=batch_norms[-1],
                        exclusive=True)
