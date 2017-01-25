@@ -3,4 +3,4 @@ dist: trusty
 language: python
 cache: pip
 install: pip install tensorflow
-script: python -c 'exec(open("README.md").read().split("```")[1][3:])'
+script: python -c 'exec(open("README.md").read().split("```")[1][6:])'
