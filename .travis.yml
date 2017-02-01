@@ -2,5 +2,5 @@
 dist: trusty
 language: python
 cache: pip
-install: pip install tensorflow
+install: pip install "https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.0.0rc0-cp27-none-linux_x86_64.whl"
 script: python -c 'exec(open("README.md").read().split("```")[1][6:])'
