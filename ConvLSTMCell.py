@@ -1,7 +1,6 @@
 import tensorflow as tf
 
-
-class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
+class ConvLSTMCell(tf.contrib.rnn.RNNCell):
   """A LSTM cell with convolutions instead of multiplications.
 
   Reference:
@@ -24,7 +23,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
   @property
   def state_size(self):
     size = self._height * self._width * self._filters
-    return tf.nn.rnn_cell.LSTMStateTuple(size, size)
+    return tf.contrib.rnn.LSTMStateTuple(size, size)
 
   @property
   def output_size(self):
@@ -56,7 +55,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 
         # The input-to-hidden and hidden-to-hidden weights can be summed directly if batch normalization is not needed.
         if not self._normalize:
-          x = tf.concat(3, [input, previous_output])  # TODO Update to TensorFlow 1.0.
+          x = tf.concat([input, previous_output], axis=3)
           n = channels + filters
           m = gates
           W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
@@ -83,7 +82,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 
         y += tf.get_variable('Biases', [m], initializer=tf.constant_initializer(0.0))
 
-        input, input_gate, forget_gate, output_gate = tf.split(3, 4, y)  # TODO Update to TensorFlow 1.0.
+        input, input_gate, forget_gate, output_gate = tf.split(y, 4, axis=3)
 
       with tf.variable_scope('LSTM'):
         memory = (previous_memory
@@ -98,7 +97,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
         output = tf.reshape(output, shape)
         memory = tf.reshape(memory, shape)
 
-      return output, tf.nn.rnn_cell.LSTMStateTuple(memory, output)
+      return output, tf.contrib.rnn.LSTMStateTuple(memory, output)
 
   def _recurrent_batch_normalization(self, tensor, timestep, epsilon=1e-3, decay=0.999, offset=False):
       """Batch normalization for RNNs. Multiple population estimates are

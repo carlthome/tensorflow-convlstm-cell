@@ -29,8 +29,6 @@ inputs = flatten(inputs)
 
 # Add the ConvLSTM step.
 cell = ConvLSTMCell(height, width, filters, [3, 3], is_training, new_sequences, statistics_timesteps=10)
-cell = tf.nn.rnn_cell.DropoutWrapper(cell, output_keep_prob=tf.cond(is_training, lambda: tf.constant(0.9), lambda: tf.constant(1.0)))
-cell = tf.nn.rnn_cell.MultiRNNCell([cell] * 3)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)
 
 # Reshape outputs to videos again, because tf.nn.dynamic_rnn only accepts 3D input.
