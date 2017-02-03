@@ -7,11 +7,12 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
     Xingjian, S. H. I., et al. "Convolutional LSTM network: A machine learning approach for precipitation nowcasting." Advances in Neural Information Processing Systems. 2015.
   """
 
-  def __init__(self, height, width, filters, kernel, is_training=None, new_sequences=None, statistics_timesteps=0, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
+  def __init__(self, height, width, filters, kernel, stride, is_training=None, new_sequences=None, statistics_timesteps=0, initializer=tf.orthogonal_initializer(), forget_bias=1.0, activation=tf.tanh):
     self._height = height
     self._width = width
     self._filters = filters
     self._kernel = kernel
+    self._stride = stride
     self._is_training = is_training
     self._initializer = initializer
     self._forget_bias = forget_bias
@@ -19,63 +20,67 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
     self._new_sequences = new_sequences
     self._statistics_timesteps = statistics_timesteps
     self._normalize = statistics_timesteps > 0
+    self._size = int(self._height * self._width * self._filters / stride[0] / stride[1])
+    assert len(kernel) == 2, "Kernel must be a list of two integers."
+    assert len(stride) == 2, "Stride must be a list of two integers."
+    assert self._height % self._stride[0] == 0, "Height must be divisible by stride."
+    assert self._width % self._stride[1] == 0, "Width must be divisible by stride."
 
   @property
   def state_size(self):
-    size = self._height * self._width * self._filters
-    return tf.contrib.rnn.LSTMStateTuple(size, size)
+    return tf.contrib.rnn.LSTMStateTuple(self._size, self._size)
 
   @property
   def output_size(self):
-    return self._height * self._width * self._filters
+    return self._size
 
   def __call__(self, input, state, scope=None):
     with tf.variable_scope(scope or self.__class__.__name__):
       previous_memory, previous_output = state
 
-      with tf.variable_scope('Counter'):
-        timestep = tf.Variable(0.0, trainable=False)
-        increment_op = tf.cond(self._new_sequences,
-                               lambda: tf.assign(timestep, 0),
-                               lambda: tf.add(timestep, 1))
-        with tf.control_dependencies([increment_op]):
-          input = input  # TODO This assignment looks silly.
+      if self._normalize:
+        with tf.variable_scope('Counter'):
+          timestep = tf.Variable(0.0, trainable=False)
+          increment_op = tf.cond(self._new_sequences,
+                                 lambda: tf.assign(timestep, 0),
+                                 lambda: tf.add(timestep, 1))
+          with tf.control_dependencies([increment_op]):
+            input = input  # TODO This assignment looks silly.
 
       with tf.variable_scope('Expand'):
         samples = input.get_shape()[0].value
-        shape = [samples, self._height, self._width]
-        input = tf.reshape(input, shape + [-1])
-        previous_memory = tf.reshape(previous_memory, shape + [self._filters])
-        previous_output = tf.reshape(previous_output, shape + [self._filters])
+
+        shape = [samples, self._height, self._width, -1]
+        input = tf.reshape(input, shape)
+        channels = input.get_shape()[-1].value
+
+        shape = [samples,
+                 int(self._height / self._stride[0]),
+                 int(self._width / self._stride[1]),
+                 self._filters]
+        previous_memory = tf.reshape(previous_memory, shape)
+        previous_output = tf.reshape(previous_output, shape)
 
       with tf.variable_scope('Convolve'):
-        channels = input.get_shape()[-1].value
         filters = self._filters
         gates = 4 * filters if filters > 1 else 4
 
-        # The input-to-hidden and hidden-to-hidden weights can be summed directly if batch normalization is not needed.
-        if not self._normalize:
-          x = tf.concat([input, previous_output], axis=3)
-          n = channels + filters
+        with tf.variable_scope('Input'):
+          x = input
+          n = channels
           m = gates
           W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
-          y = tf.nn.convolution(x, W, 'SAME')
-        else:
-
-          with tf.variable_scope('Input'):
-            x = input
-            n = channels
-            m = gates
-            W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
-            Wxh = tf.nn.convolution(x, W, 'SAME')
+          Wxh = tf.nn.convolution(x, W, 'SAME', self._stride)
+          if self._normalize:
             Wxh = self._recurrent_batch_normalization(Wxh, timestep)
 
-          with tf.variable_scope('Hidden'):
-            x = previous_output
-            n = filters
-            m = gates
-            W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
-            Whh = tf.nn.convolution(x, W, 'SAME')
+        with tf.variable_scope('Hidden'):
+          x = previous_output
+          n = filters
+          m = gates
+          W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
+          Whh = tf.nn.convolution(x, W, 'SAME')
+          if self._normalize:
             Whh = self._recurrent_batch_normalization(Whh, timestep)
 
           y = Wxh + Whh
@@ -93,7 +98,7 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
         output = self._activation(memory) * tf.sigmoid(output_gate)
 
       with tf.variable_scope('Flatten'):
-        shape = [-1, self._height * self._width * self._filters]
+        shape = [-1, self._size]
         output = tf.reshape(output, shape)
         memory = tf.reshape(memory, shape)
 
@@ -155,6 +160,9 @@ def flatten(tensor):
   return tf.reshape(tensor, [samples, timesteps, height * width * filters])
 
 
-def expand(tensor, height, width):
+def expand(tensor, height, width, stride=None):
   samples, timesteps, features = tensor.get_shape().as_list()
+  if stride:
+      height = int(height / stride[0])
+      width = int(width / stride[1])
   return tf.reshape(tensor, [samples, timesteps, height, width, -1])
