@@ -8,7 +8,7 @@ A ConvLSTM cell for TensorFlow's RNN API.
 ```python
 import tensorflow as tf
 
-from ConvLSTMCell import ConvLSTMCell, flatten, expand
+from cell import ConvLSTMCell, flatten, expand
 
 batch_size = 32
 timesteps = 100
