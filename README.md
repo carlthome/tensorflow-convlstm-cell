@@ -17,11 +17,6 @@ height = 16
 channels = 3
 filters = 12
 kernel = [3, 3]
-stride = [2, 2]
-
-# Used for dropout and recurrent batch normalization.
-is_training = tf.placeholder(tf.bool)
-new_sequences = tf.placeholder(tf.bool)
 
 # Create a placeholder for videos.
 inputs = tf.placeholder(tf.float32, [batch_size, timesteps, width, height, channels])
@@ -30,9 +25,9 @@ inputs = tf.placeholder(tf.float32, [batch_size, timesteps, width, height, chann
 inputs = flatten(inputs)
 
 # Add the ConvLSTM step.
-cell = ConvLSTMCell(height, width, filters, kernel, stride, is_training, new_sequences, statistics_timesteps=10)
+cell = ConvLSTMCell(height, width, filters, kernel)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)
 
 # Reshape outputs to videos again, because tf.nn.dynamic_rnn only accepts 3D input.
-outputs = expand(outputs, height, width, stride)
+outputs = expand(outputs, height, width, filters)
 ```
