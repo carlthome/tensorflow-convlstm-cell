@@ -30,4 +30,9 @@ outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)
 
 # Reshape outputs to videos again, because tf.nn.dynamic_rnn only accepts 3D input.
 outputs = expand(outputs, height, width, filters)
+
+# There's also a ConvGRUCell that is more memory efficient.
+from cell import ConvGRUCell
+cell = ConvGRUCell(height, width, filters, kernel)
+outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)
 ```
