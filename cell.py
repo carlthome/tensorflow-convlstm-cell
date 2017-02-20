@@ -43,9 +43,9 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
         x = tf.concat([input, previous_output], axis=3)
         n = channels + filters
         m = gates
-        W = tf.get_variable('Weights', self._kernel + [n, m], initializer=self._initializer)
+        W = tf.get_variable('kernel', self._kernel + [n, m], initializer=self._initializer)
         y = tf.nn.convolution(x, W, 'SAME')
-        y += tf.get_variable('Biases', [m], initializer=tf.constant_initializer(0.0))
+        y += tf.get_variable('bias', [m], initializer=tf.constant_initializer(0.0))
         input, input_gate, forget_gate, output_gate = tf.split(y, 4, axis=3)
 
       with tf.variable_scope('LSTM'):
