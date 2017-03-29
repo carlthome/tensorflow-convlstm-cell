@@ -92,7 +92,7 @@ class ConvGRUCell(tf.contrib.rnn.RNNCell):
         h = tf.reshape(h, shape)
 
       with tf.variable_scope('Gates'):
-        channels = input.get_shape()[-1].value
+        channels = x.get_shape()[-1].value
         inputs = tf.concat([x, h], axis=3)
         n = channels + self._filters
         m = 2 * self._filters if self._filters > 1 else 2
@@ -110,7 +110,7 @@ class ConvGRUCell(tf.contrib.rnn.RNNCell):
         y = tf.nn.convolution(inputs, W, 'SAME')
         y += tf.get_variable('bias', [m], initializer=tf.constant_initializer(0.0))
         y = self._activation(y)
-        output = update_gate * state + (1 - update_gate) * y
+        output = update_gate * h + (1 - update_gate) * y
 
       with tf.variable_scope('Flatten'):
         output = tf.reshape(output, [-1, self._size])
