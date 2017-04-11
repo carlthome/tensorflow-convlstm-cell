@@ -1,1 +1,1 @@
-from .cell import ConvLSTMCell, ConvGRUCell, expand, flatten
+from .cell import ConvLSTMCell, ConvGRUCell
