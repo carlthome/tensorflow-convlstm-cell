@@ -1,10 +1,8 @@
 # TensorFlow ConvLSTM Cell [![Build Status](https://travis-ci.org/carlthome/tensorflow-convlstm-cell.svg?branch=master)](https://travis-ci.org/carlthome/tensorflow-convlstm-cell)
 A ConvLSTM cell for TensorFlow's RNN API.
 
-# Usage
 ```python
 import tensorflow as tf
-from cell import ConvLSTMCell
 
 batch_size = 32
 timesteps = 100
@@ -20,6 +18,7 @@ inputs = tf.placeholder(tf.float32, [batch_size, timesteps] + shape + [channels]
 inputs = tf.transpose(inputs, (1, 0, 2, 3, 4))
 
 # Add the ConvLSTM step.
+from cell import ConvLSTMCell
 cell = ConvLSTMCell(shape, filters, kernel)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype, time_major=True)
 
