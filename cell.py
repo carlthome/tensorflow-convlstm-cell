@@ -15,6 +15,7 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
     self._activation = activation
     self._size = tf.TensorShape(shape + [self._filters])
     self._normalize = normalize
+    self._feature_axis = self._size.ndims
     
   @property
   def state_size(self):
@@ -31,14 +32,14 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
       channels = x.shape[-1].value
       filters = self._filters
       gates = 4 * filters if filters > 1 else 4
-      x = tf.concat([x, previous_output], axis=3)
+      x = tf.concat([x, previous_output], axis=self._feature_axis)
       n = channels + filters
       m = gates
       W = tf.get_variable('kernel', self._kernel + [n, m], initializer=self._initializer)
       y = tf.nn.convolution(x, W, 'SAME')
       if not self._normalize:
         y += tf.get_variable('bias', [m], initializer=tf.constant_initializer(0.0))
-      input_contribution, input_gate, forget_gate, output_gate = tf.split(y, 4, axis=3)
+      input_contribution, input_gate, forget_gate, output_gate = tf.split(y, 4, axis=self._feature_axis)
 
       if self._normalize:
         input_contribution = tf.contrib.layers.layer_norm(input_contribution)
@@ -68,6 +69,7 @@ class ConvGRUCell(tf.contrib.rnn.RNNCell):
     self._activation = activation
     self._size = tf.TensorShape(shape + [self._filters])
     self._normalize = normalize
+    self._feature_axis = self._size.ndims
 
   @property
   def state_size(self):
@@ -82,22 +84,22 @@ class ConvGRUCell(tf.contrib.rnn.RNNCell):
 
       with tf.variable_scope('Gates'):
         channels = x.shape[-1].value
-        inputs = tf.concat([x, h], axis=3)
+        inputs = tf.concat([x, h], axis=self._feature_axis)
         n = channels + self._filters
         m = 2 * self._filters if self._filters > 1 else 2
         W = tf.get_variable('kernel', self._kernel + [n, m], initializer=self._initializer)
         y = tf.nn.convolution(inputs, W, 'SAME')
         if self._normalize:
-          reset_gate, update_gate = tf.split(y, 2, axis=3)
+          reset_gate, update_gate = tf.split(y, 2, axis=self._feature_axis)
           reset_gate = tf.contrib.layers.layer_norm(reset_gate)
           update_gate = tf.contrib.layers.layer_norm(update_gate)
         else:
           y += tf.get_variable('bias', [m], initializer=tf.constant_initializer(1.0))
-          reset_gate, update_gate = tf.split(y, 2, axis=3)
+          reset_gate, update_gate = tf.split(y, 2, axis=self._feature_axis)
         reset_gate, update_gate = tf.sigmoid(reset_gate), tf.sigmoid(update_gate)
 
       with tf.variable_scope('Output'):
-        inputs = tf.concat([x, reset_gate * h], axis=3)
+        inputs = tf.concat([x, reset_gate * h], axis=self._feature_axis)
         n = channels + self._filters
         m = self._filters
         W = tf.get_variable('kernel', self._kernel + [n, m], initializer=self._initializer)
