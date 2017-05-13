@@ -29,4 +29,16 @@ outputs = tf.transpose(inputs, (1, 0, 2, 3, 4))
 from cell import ConvGRUCell
 cell = ConvGRUCell(shape, filters, kernel)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype, time_major=True)
+
+# It's also possible to enter 2D input or 4D input instead of 3D.
+features = 100
+inputs = tf.placeholder(tf.float32, [timesteps, batch_size, features, channels])
+cell = ConvLSTMCell([features], filters, kernel=[3])
+outputs, state = tf.nn.bidirectional_dynamic_rnn(cell, cell, inputs, dtype=inputs.dtype, time_major=True)
+
+shape = [50, 50, 50]
+kernel = [1, 3, 5]
+inputs = tf.placeholder(tf.float32, [timesteps, batch_size] + shape + [channels])
+cell = ConvGRUCell(shape, filters, kernel)
+outputs, state= tf.nn.bidirectional_dynamic_rnn(cell, cell, inputs, dtype=inputs.dtype, time_major=True)
 ```
