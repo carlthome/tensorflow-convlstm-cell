@@ -16,7 +16,7 @@ class ConvLSTMCell(tf.contrib.rnn.RNNCell):
     self._size = tf.TensorShape(shape + [self._filters])
     self._normalize = normalize
     self._feature_axis = self._size.ndims
-    
+
   @property
   def state_size(self):
     return tf.contrib.rnn.LSTMStateTuple(self._size, self._size)
