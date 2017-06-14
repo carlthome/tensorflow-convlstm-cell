@@ -2,5 +2,5 @@
 dist: trusty
 language: python
 cache: pip
-install: pip install tensorflow==1.2.0rc1
+install: pip install tensorflow==1.2.0rc2
 script: python -c 'exec(open("README.md").read().split("```")[1][6:])'
