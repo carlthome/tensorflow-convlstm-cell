@@ -20,7 +20,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return tf.contrib.rnn.LSTMStateTuple(self._size, self._size)
+    return tf.nn.rnn_cell.LSTMStateTuple(self._size, self._size)
 
   @property
   def output_size(self):
@@ -58,7 +58,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 
     h = tf.sigmoid(o) * self._activation(c)
 
-    state = tf.contrib.rnn.LSTMStateTuple(c, h)
+    state = tf.nn.rnn_cell.LSTMStateTuple(c, h)
 
     return h, state
 
