@@ -25,14 +25,15 @@ cell = ConvGRUCell(shape, filters, kernel)
 outputs, state = tf.nn.dynamic_rnn(cell, inputs, dtype=inputs.dtype)
 
 # It's also possible to enter 2D input or 4D input instead of 3D.
-features = 100
-inputs = tf.placeholder(tf.float32, [timesteps, batch_size, features, channels])
-cell = ConvLSTMCell([features], filters, kernel=[3])
+shape = [100]
+kernel = [3]
+inputs = tf.placeholder(tf.float32, [batch_size, timesteps] + shape + [channels])
+cell = ConvLSTMCell(shape, filters, kernel)
 outputs, state = tf.nn.bidirectional_dynamic_rnn(cell, cell, inputs, dtype=inputs.dtype)
 
 shape = [50, 50, 50]
 kernel = [1, 3, 5]
-inputs = tf.placeholder(tf.float32, [timesteps, batch_size] + shape + [channels])
+inputs = tf.placeholder(tf.float32, [batch_size, timesteps] + shape + [channels])
 cell = ConvGRUCell(shape, filters, kernel)
 outputs, state= tf.nn.bidirectional_dynamic_rnn(cell, cell, inputs, dtype=inputs.dtype)
 ```
