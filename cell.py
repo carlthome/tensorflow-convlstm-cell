@@ -47,7 +47,9 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
       i = tf.contrib.layers.layer_norm(i)
       f = tf.contrib.layers.layer_norm(f)
 
-    c = c * tf.sigmoid(f + self._forget_bias) + tf.sigmoid(i) * self._activation(j)
+    f = tf.sigmoid(f + self._forget_bias)
+    i = tf.sigmoid(i)
+    c = c * f + i * self._activation(j)
 
     if self._peephole:
       o += tf.get_variable('W_co', c.shape[1:]) * c
@@ -56,7 +58,13 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
       o = tf.contrib.layers.layer_norm(o)
       c = tf.contrib.layers.layer_norm(c)
 
-    h = tf.sigmoid(o) * self._activation(c)
+    o = tf.sigmoid(o)
+    h = o * self._activation(c)
+
+    tf.summary.histogram('forget_gate', f)
+    tf.summary.histogram('input_gate', i)
+    tf.summary.histogram('output_gate', o)
+    tf.summary.histogram('cell_state', c)
 
     state = tf.nn.rnn_cell.LSTMStateTuple(c, h)
 
@@ -101,6 +109,9 @@ class ConvGRUCell(tf.nn.rnn_cell.RNNCell):
         y += tf.get_variable('bias', [m], initializer=tf.ones_initializer())
         r, u = tf.split(y, 2, axis=self._feature_axis)
       r, u = tf.sigmoid(r), tf.sigmoid(u)
+
+      tf.summary.histogram('reset_gate', r)
+      tf.summary.histogram('update_gate', u)
 
     with tf.variable_scope('candidate'):
       inputs = tf.concat([x, r * h], axis=self._feature_axis)
