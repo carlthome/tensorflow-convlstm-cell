@@ -83,11 +83,10 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
 class ConvGRUCell(tf.nn.rnn_cell.RNNCell):
   """A GRU cell with convolutions instead of multiplications."""
 
-  def __init__(self, shape, filters, kernel, initializer=None, activation=tf.tanh, normalize=True, data_format='channels_last', reuse=None):
+  def __init__(self, shape, filters, kernel, activation=tf.tanh, normalize=True, data_format='channels_last', reuse=None):
     super(ConvGRUCell, self).__init__(_reuse=reuse)
     self._filters = filters
     self._kernel = kernel
-    self._initializer = initializer
     self._activation = activation
     self._normalize = normalize
     if data_format == 'channels_last':
