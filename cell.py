@@ -15,6 +15,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
     self._activation = activation
     self._normalize = normalize
     self._peephole = peephole
+    self._channel_first_dict = {1:'NCW',2:'NCHW',3:'NCDHW'}
     if data_format == 'channels_last':
         self._size = tf.TensorShape(shape + [self._filters])
         self._feature_axis = self._size.ndims
@@ -22,7 +23,7 @@ class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
     elif data_format == 'channels_first':
         self._size = tf.TensorShape([self._filters] + shape)
         self._feature_axis = 1
-        self._data_format = 'NCHW'
+        self._data_format = self._channel_first_dict[len(self._kernel)]
     else:
         raise ValueError('Unknown data_format')
 
@@ -83,6 +84,7 @@ class ConvGRUCell(tf.nn.rnn_cell.RNNCell):
     self._kernel = kernel
     self._activation = activation
     self._normalize = normalize
+    self._channel_first_dict = {1:'NCW',2:'NCHW',3:'NCDHW'}
     if data_format == 'channels_last':
         self._size = tf.TensorShape(shape + [self._filters])
         self._feature_axis = self._size.ndims
@@ -90,7 +92,7 @@ class ConvGRUCell(tf.nn.rnn_cell.RNNCell):
     elif data_format == 'channels_first':
         self._size = tf.TensorShape([self._filters] + shape)
         self._feature_axis = 1
-        self._data_format = 'NCHW'
+        self._data_format = self._channel_first_dict[len(self._kernel)]
     else:
         raise ValueError('Unknown data_format')
 
