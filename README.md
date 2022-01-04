@@ -1,4 +1,4 @@
-# TensorFlow ConvLSTM Cell [![Build Status](https://travis-ci.org/carlthome/tensorflow-convlstm-cell.svg?branch=master)](https://travis-ci.org/carlthome/tensorflow-convlstm-cell)
+# TensorFlow ConvLSTM Cell
 A ConvLSTM cell for TensorFlow's RNN API.
 
 ```python
