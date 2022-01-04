@@ -16,5 +16,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-python@v2
-    - run: pip install tensorflow-cpu
+    - uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ hashFiles('requirements.txt') }}
+    - run: pip install -r requirements.txt
     - run: python -c 'exec(open("README.md").read().split("```")[1][6:])'
