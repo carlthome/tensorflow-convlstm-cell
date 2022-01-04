@@ -1,4 +1,4 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 class ConvLSTMCell(tf.nn.rnn_cell.RNNCell):
   """A LSTM cell with convolutions instead of multiplications.
