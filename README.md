@@ -2,7 +2,7 @@
 A ConvLSTM cell for TensorFlow's RNN API.
 
 ```python
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 batch_size = 32
 timesteps = 100
