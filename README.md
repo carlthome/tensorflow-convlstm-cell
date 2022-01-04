@@ -4,6 +4,8 @@ A ConvLSTM cell for TensorFlow's RNN API.
 ```python
 import tensorflow.compat.v1 as tf
 
+tf.disable_v2_behavior()
+
 batch_size = 32
 timesteps = 100
 shape = [640, 480]
