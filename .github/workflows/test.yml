@@ -7,18 +7,16 @@ on:
       - main
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-python@v2
-    - uses: actions/cache@v2
-      with:
-        path: ~/.cache/pip
-        key: ${{ hashFiles('requirements.txt') }}
-    - run: pip install -r requirements.txt
-    - run: python -c 'exec(open("README.md").read().split("```")[1][6:])'
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -c 'exec(open("README.md").read().split("```")[1][6:])'
